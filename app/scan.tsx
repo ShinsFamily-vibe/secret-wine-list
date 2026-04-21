@@ -65,6 +65,7 @@ export default function ScanScreen() {
   }, []);
 
   const [showCamera, setShowCamera] = useState(false);
+  const [scanError, setScanError] = useState("");
   const [photos, setPhotos] = useState<LocalPhoto[]>([]);
   const [analyzingIdx, setAnalyzingIdx] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -92,6 +93,8 @@ export default function ScanScreen() {
   };
 
   const addPhoto = async (uri: string, base64: string) => {
+    setScanError("");
+    if (!base64) { setScanError("Image data is empty."); return; }
     const newIdx = photos.length;
     setPhotos((prev) => [...prev, { uri, base64 }]);
     setAnalyzingIdx(newIdx);
@@ -99,16 +102,17 @@ export default function ScanScreen() {
       const info = await analyzeWineLabel(base64);
       mergeInfo(info);
     } catch (e) {
-      Alert.alert(tr("scanError", lang), String(e));
+      setScanError(String(e));
     } finally {
       setAnalyzingIdx(null);
     }
   };
 
   const openWebFilePicker = (capture?: boolean) => {
+    setScanError("");
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "image/*";
+    input.accept = "image/jpeg,image/png,image/webp,image/*";
     if (capture) input.setAttribute("capture", "environment");
     input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
     document.body.appendChild(input);
@@ -120,16 +124,22 @@ export default function ScanScreen() {
       reader.onload = async () => {
         try {
           const dataUrl = reader.result as string;
-          const resized = await resizeImageWeb(dataUrl, 1100);
-          await addPhoto(resized, resized.split(",")[1] ?? "");
+          // Resize aggressively for mobile — ensures small enough for API
+          let resized = await resizeImageWeb(dataUrl, 900);
+          // If still too large (>3MB base64), resize again
+          if (resized.length > 3_000_000) {
+            resized = await resizeImageWeb(resized, 600);
+          }
+          const b64 = resized.split(",")[1] ?? "";
+          if (!b64) { setScanError("Failed to process image."); return; }
+          await addPhoto(resized, b64);
         } catch (e) {
-          Alert.alert("Error", String(e));
+          setScanError("Image read error: " + String(e));
         }
       };
-      reader.onerror = () => Alert.alert("Error", "Could not read image.");
+      reader.onerror = () => setScanError("Could not read image file.");
       reader.readAsDataURL(file);
     });
-    // iOS Safari requires a small delay before click
     setTimeout(() => input.click(), 50);
   };
 
@@ -273,6 +283,12 @@ export default function ScanScreen() {
               </View>
             )}
 
+            {scanError ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>⚠️ {scanError}</Text>
+              </View>
+            ) : null}
+
             <Field label={tr("wineName", lang)} value={name} onChangeText={setName} />
             <Field label={tr("winery", lang)} value={winery} onChangeText={setWinery} />
             <Field label={tr("vintage", lang)} value={vintage} onChangeText={setVintage} keyboardType="numeric" />
@@ -381,6 +397,8 @@ const styles = StyleSheet.create({
 
   scanningRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   scanningText: { color: "#c8a97e", fontSize: 14 },
+  errorBox: { backgroundColor: "rgba(255,80,80,0.15)", borderRadius: 10, padding: 12, borderWidth: 1, borderColor: "rgba(255,80,80,0.4)" },
+  errorText: { color: "#ff6b6b", fontSize: 13, lineHeight: 18 },
   field: { gap: 6 },
   fieldLabel: { color: "#c8a97e", fontSize: 13, fontWeight: "600" },
   input: {
