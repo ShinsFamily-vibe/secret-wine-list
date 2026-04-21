@@ -3,7 +3,7 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator, FlatList, KeyboardAvoidingView, Platform,
+  ActivityIndicator, KeyboardAvoidingView, Modal, Platform,
   SafeAreaView, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from "react-native";
@@ -74,6 +74,7 @@ export default function AdviceScreen() {
   const [picks, setPicks] = useState<ContextualPicks | null>(null);
   const [picksLoading, setPicksLoading] = useState(false);
   const [lang, setLang] = useState<"ko" | "en">("ko");
+  const [detailWine, setDetailWine] = useState<{ wine: Wine | LikedWine; reason: string; isBuddy?: boolean } | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -228,33 +229,44 @@ export default function AdviceScreen() {
                   🕐 {lang === "ko" ? "지금 이 순간을 위한 추천" : "Perfect for Right Now"}
                 </Text>
 
-                {picks.myPicks.map((p, i) => (
-                  <View key={i} style={styles.pickCard}>
-                    <View style={styles.pickBadge}>
-                      <Text style={styles.pickBadgeText}>나</Text>
-                    </View>
-                    <View style={styles.pickInfo}>
-                      <Text style={styles.pickName} numberOfLines={1}>{p.name}{p.winery ? ` · ${p.winery}` : ""}</Text>
-                      {p.variety ? <Text style={styles.pickSub} numberOfLines={1}>{p.variety}</Text> : null}
-                      <Text style={styles.pickReason}>{p.reason}</Text>
-                    </View>
-                    <Text style={styles.pickRating}>👍👍</Text>
-                  </View>
-                ))}
+                {picks.myPicks.map((p, i) => {
+                  const full = myLiked.find((w) => w.name === p.name || w.winery === p.winery) ?? p as unknown as Wine;
+                  return (
+                    <TouchableOpacity key={i} style={styles.pickCard} onPress={() => setDetailWine({ wine: full, reason: p.reason })}>
+                      <View style={styles.pickBadge}>
+                        <Text style={styles.pickBadgeText}>나</Text>
+                      </View>
+                      <View style={styles.pickInfo}>
+                        <Text style={styles.pickName} numberOfLines={1}>{p.name}{p.winery ? ` · ${p.winery}` : ""}</Text>
+                        {p.variety ? <Text style={styles.pickSub} numberOfLines={1}>{p.variety}</Text> : null}
+                        <Text style={styles.pickReason}>{p.reason}</Text>
+                      </View>
+                      <View style={styles.pickRight}>
+                        <Text style={styles.pickRating}>👍👍</Text>
+                        <Ionicons name="chevron-forward" size={14} color="#555" />
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
 
-                {picks.buddyPick && (
-                  <View style={[styles.pickCard, styles.pickCardBuddy]}>
-                    <View style={[styles.pickBadge, styles.pickBadgeBuddy]}>
-                      <Text style={styles.pickBadgeText}>👥</Text>
-                    </View>
-                    <View style={styles.pickInfo}>
-                      <Text style={styles.pickName} numberOfLines={1}>{picks.buddyPick.name}{picks.buddyPick.winery ? ` · ${picks.buddyPick.winery}` : ""}</Text>
-                      {picks.buddyPick.variety ? <Text style={styles.pickSub}>{picks.buddyPick.variety}</Text> : null}
-                      {picks.buddyPick.owner ? <Text style={styles.pickOwner}>{picks.buddyPick.owner}'s pick</Text> : null}
-                      <Text style={styles.pickReason}>{picks.buddyPick.reason}</Text>
-                    </View>
-                  </View>
-                )}
+                {picks.buddyPick && (() => {
+                  const bp = picks.buddyPick!;
+                  const full = buddyLiked.find((w) => w.name === bp.name || w.winery === bp.winery) ?? bp as unknown as LikedWine;
+                  return (
+                    <TouchableOpacity style={[styles.pickCard, styles.pickCardBuddy]} onPress={() => setDetailWine({ wine: full, reason: bp.reason, isBuddy: true })}>
+                      <View style={[styles.pickBadge, styles.pickBadgeBuddy]}>
+                        <Text style={styles.pickBadgeText}>👥</Text>
+                      </View>
+                      <View style={styles.pickInfo}>
+                        <Text style={styles.pickName} numberOfLines={1}>{bp.name}{bp.winery ? ` · ${bp.winery}` : ""}</Text>
+                        {bp.variety ? <Text style={styles.pickSub}>{bp.variety}</Text> : null}
+                        {bp.owner ? <Text style={styles.pickOwner}>{bp.owner}'s pick</Text> : null}
+                        <Text style={styles.pickReason}>{bp.reason}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={14} color="#555" />
+                    </TouchableOpacity>
+                  );
+                })()}
               </View>
             )}
 
@@ -331,6 +343,62 @@ export default function AdviceScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      {/* Detail Modal */}
+      <Modal visible={!!detailWine} transparent animationType="slide" onRequestClose={() => setDetailWine(null)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setDetailWine(null)}>
+          <TouchableOpacity activeOpacity={1} style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            {detailWine && (() => {
+              const w = detailWine.wine as any;
+              const rows: [string, string][] = [
+                ["🍷 Wine", w.name || ""],
+                ["🏠 Winery", w.winery || ""],
+                ["📅 Vintage", w.vintage || ""],
+                ["🌍 Region", w.region || ""],
+                ["🍇 Variety", w.variety || ""],
+                ["💰 Price", w.price || ""],
+                ["🤖 Est. Price", w.estimatedPrice || ""],
+                ["📝 Notes", w.notes || ""],
+              ].filter(([, v]) => v) as [string, string][];
+              return (
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle} numberOfLines={2}>{w.name || w.winery || "Wine"}</Text>
+                    {detailWine.isBuddy && w.owner && (
+                      <Text style={styles.modalBuddyTag}>👥 {w.owner}'s pick</Text>
+                    )}
+                  </View>
+
+                  <View style={styles.modalReasonBox}>
+                    <Text style={styles.modalReasonLabel}>✨ {lang === "ko" ? "지금 추천하는 이유" : "Why right now"}</Text>
+                    <Text style={styles.modalReasonText}>{detailWine.reason}</Text>
+                  </View>
+
+                  {rows.map(([label, value]) => (
+                    <View key={label} style={styles.modalRow}>
+                      <Text style={styles.modalRowLabel}>{label}</Text>
+                      <Text style={styles.modalRowValue}>{value}</Text>
+                    </View>
+                  ))}
+
+                  <View style={styles.modalTipBox}>
+                    <Text style={styles.modalTipText}>
+                      {lang === "ko"
+                        ? "💡 레스토랑에서 주문 시: 위 정보를 소믈리에에게 보여주세요.\n구매 시: 와인 전문점에서 이름 + 빈티지로 검색해보세요."
+                        : "💡 At a restaurant: show this to the sommelier.\nTo buy: search by name + vintage at a wine shop."}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setDetailWine(null)}>
+                    <Text style={styles.modalCloseBtnText}>{lang === "ko" ? "닫기" : "Close"}</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              );
+            })()}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -376,6 +444,7 @@ const styles = StyleSheet.create({
   pickOwner: { color: "rgba(100,180,255,0.8)", fontSize: 11, marginTop: 1 },
   pickReason: { color: "#c8a97e", fontSize: 12, marginTop: 4, lineHeight: 17 },
   pickRating: { fontSize: 18 },
+  pickRight: { alignItems: "center", gap: 4 },
 
   noPicksBox: {
     backgroundColor: "rgba(200,169,126,0.08)",
@@ -421,6 +490,35 @@ const styles = StyleSheet.create({
   answerText: { color: "#e8e8e8", fontSize: 14, lineHeight: 22 },
 
   emptyText: { color: "#aaa", fontSize: 16 },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
+  modalSheet: {
+    backgroundColor: "#1a0a2e", borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 20, paddingBottom: 40, maxHeight: "85%",
+    borderWidth: 1, borderColor: "rgba(200,169,126,0.2)",
+  },
+  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.2)", alignSelf: "center", marginBottom: 16 },
+  modalHeader: { marginBottom: 16, gap: 4 },
+  modalTitle: { color: "#fff", fontSize: 20, fontWeight: "700" },
+  modalBuddyTag: { color: "rgba(100,180,255,0.8)", fontSize: 13 },
+  modalReasonBox: {
+    backgroundColor: "rgba(200,169,126,0.1)", borderRadius: 12, padding: 14, marginBottom: 16,
+    borderWidth: 1, borderColor: "rgba(200,169,126,0.25)",
+  },
+  modalReasonLabel: { color: "#c8a97e", fontSize: 12, fontWeight: "700", marginBottom: 6 },
+  modalReasonText: { color: "#e8e8e8", fontSize: 14, lineHeight: 20 },
+  modalRow: { flexDirection: "row", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)", gap: 12 },
+  modalRowLabel: { color: "#888", fontSize: 13, width: 110 },
+  modalRowValue: { color: "#fff", fontSize: 13, flex: 1, lineHeight: 18 },
+  modalTipBox: {
+    backgroundColor: "rgba(255,255,255,0.04)", borderRadius: 12, padding: 14, marginTop: 16,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.08)",
+  },
+  modalTipText: { color: "#999", fontSize: 12, lineHeight: 19 },
+  modalCloseBtn: {
+    backgroundColor: "#c8a97e", borderRadius: 14, paddingVertical: 14,
+    alignItems: "center", marginTop: 16,
+  },
+  modalCloseBtnText: { color: "#1a0a2e", fontWeight: "700", fontSize: 16 },
   menuScanBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10,
     backgroundColor: "#c8a97e", borderRadius: 14, paddingVertical: 14,
