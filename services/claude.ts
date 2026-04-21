@@ -155,3 +155,57 @@ For each suggestion include: wine name, producer, approximate price range, and a
   const data = await response.json();
   return data.content[0].text.trim();
 }
+
+export async function analyzeMenuForUser(
+  base64Image: string,
+  myWines: LikedWine[],
+  buddyWines: LikedWine[],
+  lang: "ko" | "en"
+): Promise<string> {
+  if (!IS_WEB && !CLAUDE_API_KEY) throw new Error("Claude API key not set.");
+
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (!IS_WEB) {
+    headers["x-api-key"] = CLAUDE_API_KEY;
+    headers["anthropic-version"] = "2023-06-01";
+  }
+
+  const formatWine = (w: LikedWine) =>
+    `- ${w.name || "?"}${w.winery ? ` by ${w.winery}` : ""}${w.variety ? `, ${w.variety}` : ""}${w.region ? `, ${w.region}` : ""}${w.rating === "double_thumbs_up" ? " ⭐⭐" : " ⭐"}`;
+
+  const myList = myWines.length > 0 ? myWines.map(formatWine).join("\n") : "(none yet)";
+  const buddyList = buddyWines.length > 0 ? buddyWines.map(formatWine).join("\n") : "(none)";
+
+  const instructions = lang === "ko"
+    ? `이 와인 메뉴판 사진을 분석해주세요. 메뉴에서 모든 와인을 추출한 뒤, 아래 사용자의 취향을 바탕으로 가장 잘 맞는 와인 2~3개를 추천해주세요. 메뉴에 없는 와인은 추천하지 마세요. 각 추천에는 와인 이름, 가격(메뉴에 있으면), 추천 이유를 포함해주세요.`
+    : `Analyze this wine menu photo. Extract all wines listed, then recommend 2-3 wines from this menu that best match the user's taste profile below. Only recommend wines actually on this menu. Include the wine name, price (if shown), and reason for each recommendation.`;
+
+  const response = await fetch(ANALYZE_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1500,
+      messages: [{
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: { type: "base64", media_type: "image/jpeg", data: base64Image },
+          },
+          {
+            type: "text",
+            text: `${instructions}\n\nMy liked wines (⭐=thumbs up, ⭐⭐=double thumbs up):\n${myList}\n\nBuddies' liked wines:\n${buddyList}`,
+          },
+        ],
+      }],
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Claude API error ${response.status}: ${err}`);
+  }
+  const data = await response.json();
+  return data.content[0].text.trim();
+}

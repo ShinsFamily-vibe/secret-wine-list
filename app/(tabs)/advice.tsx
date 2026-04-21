@@ -10,8 +10,31 @@ import {
 import { auth } from "../../services/firebase";
 import { fetchWinesFS, fetchBuddyWinesFS } from "../../services/firestoreWines";
 import { fetchBuddies } from "../../services/firestoreBuddies";
-import { askWineAdvice, LikedWine } from "../../services/claude";
+import { askWineAdvice, analyzeMenuForUser, LikedWine } from "../../services/claude";
 import { Wine } from "../../constants/types";
+
+function resizeImageForWeb(dataUrl: string, maxPx: number): Promise<string> {
+  return new Promise((resolve) => {
+    const img = document.createElement("img") as HTMLImageElement;
+    const timer = setTimeout(() => resolve(dataUrl), 8000);
+    img.onload = () => {
+      clearTimeout(timer);
+      try {
+        const scale = Math.min(1, maxPx / Math.max(img.width || 800, img.height || 600));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round((img.width || 800) * scale);
+        canvas.height = Math.round((img.height || 600) * scale);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(dataUrl); return; }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const out = canvas.toDataURL("image/jpeg", 0.82);
+        resolve(out.length > 200 ? out : dataUrl);
+      } catch { resolve(dataUrl); }
+    };
+    img.onerror = () => { clearTimeout(timer); resolve(dataUrl); };
+    img.src = dataUrl;
+  });
+}
 
 const LIKED_RATINGS = ["thumbs_up", "double_thumbs_up"];
 
@@ -47,6 +70,7 @@ export default function AdviceScreen() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [asking, setAsking] = useState(false);
+  const [menuAnalyzing, setMenuAnalyzing] = useState(false);
   const [lang, setLang] = useState<"ko" | "en">("ko");
   const scrollRef = useRef<ScrollView>(null);
 
@@ -94,6 +118,47 @@ export default function AdviceScreen() {
     } finally {
       setAsking(false);
     }
+  };
+
+  const handleScanMenu = () => {
+    if (menuAnalyzing) return;
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/jpeg,image/png,image/webp,image/*";
+    input.setAttribute("capture", "environment");
+    input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+    document.body.appendChild(input);
+    input.addEventListener("change", async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      document.body.removeChild(input);
+      if (!file) return;
+      setMenuAnalyzing(true);
+      setAnswer("");
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const dataUrl = reader.result as string;
+          let resized = await resizeImageForWeb(dataUrl, 1200);
+          if (resized.length > 3_000_000) resized = await resizeImageForWeb(resized, 700);
+          const b64 = resized.split(",")[1] ?? "";
+          const result = await analyzeMenuForUser(
+            b64,
+            myLiked.map((w) => tolikedWine(w)),
+            buddyLiked,
+            lang
+          );
+          setAnswer(result);
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+        } catch (err) {
+          setAnswer(`Error: ${String(err)}`);
+        } finally {
+          setMenuAnalyzing(false);
+        }
+      };
+      reader.onerror = () => { setAnswer("Could not read image."); setMenuAnalyzing(false); };
+      reader.readAsDataURL(file);
+    });
+    setTimeout(() => input.click(), 50);
   };
 
   if (loading) {
@@ -161,6 +226,29 @@ export default function AdviceScreen() {
                 </Text>
               </View>
             )}
+
+            {/* Menu scan */}
+            <TouchableOpacity
+              style={[styles.menuScanBtn, menuAnalyzing && styles.menuScanBtnDisabled]}
+              onPress={handleScanMenu}
+              disabled={menuAnalyzing}
+            >
+              {menuAnalyzing ? (
+                <>
+                  <ActivityIndicator size="small" color="#1a0a2e" />
+                  <Text style={styles.menuScanText}>
+                    {lang === "ko" ? "메뉴 분석 중..." : "Analyzing menu..."}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="restaurant-outline" size={20} color="#1a0a2e" />
+                  <Text style={styles.menuScanText}>
+                    {lang === "ko" ? "📋 와인 메뉴판 스캔" : "📋 Scan Wine Menu"}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
 
             {/* Guide + input */}
             <View style={styles.section}>
@@ -284,4 +372,12 @@ const styles = StyleSheet.create({
   answerText: { color: "#e8e8e8", fontSize: 14, lineHeight: 22 },
 
   emptyText: { color: "#aaa", fontSize: 16 },
+  menuScanBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10,
+    backgroundColor: "#c8a97e", borderRadius: 14, paddingVertical: 14,
+    shadowColor: "#c8a97e", shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3, shadowRadius: 6, elevation: 4,
+  },
+  menuScanBtnDisabled: { opacity: 0.6 },
+  menuScanText: { color: "#1a0a2e", fontSize: 15, fontWeight: "700" },
 });
