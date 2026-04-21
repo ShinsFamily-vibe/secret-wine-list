@@ -14,8 +14,16 @@ import { askWineAdvice, LikedWine } from "../../services/claude";
 import { Wine } from "../../constants/types";
 
 const LIKED_RATINGS = ["thumbs_up", "double_thumbs_up"];
-const GUIDE =
-  "Claude가 당신 및 Buddy들의 와인리스트를 바탕으로 추천해드립니다.\n지금 어떤 와인이 생각나세요?\n종류, 가격, 모임 성격, 날씨, 음식 등을 적어주시면 추천해드릴게요.";
+
+const GUIDE = {
+  ko: "Claude가 당신 및 Buddy들의 와인리스트를 바탕으로 추천해드립니다.\n지금 어떤 와인이 생각나세요?\n종류, 가격, 모임 성격, 날씨, 음식 등을 적어주시면 추천해드릴게요.",
+  en: "Claude recommends wines based on your list and your buddies' lists.\nWhat kind of wine are you in the mood for?\nTell me the type, budget, occasion, weather, or food pairing — I'll find the perfect match.",
+};
+
+const PLACEHOLDER = {
+  ko: "예: 오늘 삼겹살 먹는데 어울리는 레드와인 추천해줘 (2만원대)",
+  en: "e.g. Suggest a red wine for grilled pork belly tonight, under $20",
+};
 
 function ratingEmoji(r: string) {
   if (r === "double_thumbs_up") return "👍👍";
@@ -39,6 +47,7 @@ export default function AdviceScreen() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [asking, setAsking] = useState(false);
+  const [lang, setLang] = useState<"ko" | "en">("ko");
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -111,6 +120,9 @@ export default function AdviceScreen() {
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}>
           <View style={styles.header}>
             <Text style={styles.headerTitle}>🤖 AI Wine Advice</Text>
+            <TouchableOpacity onPress={() => setLang(lang === "ko" ? "en" : "ko")} style={styles.langBtn}>
+              <Text style={styles.langText}>{lang === "ko" ? "EN" : "한"}</Text>
+            </TouchableOpacity>
           </View>
 
           <ScrollView
@@ -152,11 +164,11 @@ export default function AdviceScreen() {
 
             {/* Guide + input */}
             <View style={styles.section}>
-              <Text style={styles.guideText}>{GUIDE}</Text>
+              <Text style={styles.guideText}>{GUIDE[lang]}</Text>
               <View style={styles.inputRow}>
                 <TextInput
                   style={styles.input}
-                  placeholder="예: 오늘 삼겹살 먹는데 어울리는 레드와인 추천해줘 (2만원대)"
+                  placeholder={PLACEHOLDER[lang]}
                   placeholderTextColor="#555"
                   value={question}
                   onChangeText={setQuestion}
@@ -200,6 +212,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   header: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: Platform.OS === "android" ? 50 : 12,
     paddingBottom: 12,
@@ -207,6 +220,8 @@ const styles = StyleSheet.create({
     borderBottomColor: "rgba(200,169,126,0.2)",
   },
   headerTitle: { color: "#fff", fontSize: 20, fontWeight: "700" },
+  langBtn: { padding: 8 },
+  langText: { color: "#c8a97e", fontSize: 14, fontWeight: "600" },
   content: { padding: 16, gap: 20, paddingBottom: 40 },
 
   section: { gap: 12 },
