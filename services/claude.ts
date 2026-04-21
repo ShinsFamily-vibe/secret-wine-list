@@ -215,7 +215,8 @@ export interface ContextualPick {
   winery: string;
   variety?: string;
   owner?: string;
-  reason: string;
+  reasonKo: string;
+  reasonEn: string;
 }
 
 export interface ContextualPicks {
@@ -225,8 +226,7 @@ export interface ContextualPicks {
 
 export async function getContextualPicks(
   myTopWines: LikedWine[],
-  buddyWines: LikedWine[],
-  lang: "ko" | "en"
+  buddyWines: LikedWine[]
 ): Promise<ContextualPicks> {
   if (!IS_WEB && !CLAUDE_API_KEY) throw new Error("Claude API key not set.");
   if (myTopWines.length === 0) return { myPicks: [], buddyPick: null };
@@ -251,7 +251,6 @@ export async function getContextualPicks(
     ? buddyWines.map((w, i) => `${i + 1}. ${fmt(w)} [by ${w.owner || "buddy"}]`).join("\n")
     : "";
 
-  const reasonLang = lang === "ko" ? "Korean" : "English";
   const prompt = `Current context: ${timeOfDay}, ${season}, month ${month}.
 
 From MY double-thumbs-up wines, pick exactly 2 that best suit this moment:
@@ -259,8 +258,8 @@ ${myList}
 
 ${buddyList ? `From BUDDIES' liked wines, pick exactly 1 that best suits this moment:\n${buddyList}` : "No buddy wines."}
 
-Respond ONLY with valid JSON (no markdown):
-{"myPicks":[{"name":"...","winery":"...","variety":"...","reason":"one line in ${reasonLang}"},{"name":"...","winery":"...","variety":"...","reason":"..."}],"buddyPick":${buddyList ? `{"name":"...","winery":"...","variety":"...","owner":"...","reason":"..."}` : "null"}}`;
+Respond ONLY with valid JSON (no markdown). Each pick needs both reasonKo (Korean) and reasonEn (English), one line each:
+{"myPicks":[{"name":"...","winery":"...","variety":"...","reasonKo":"한국어 이유","reasonEn":"English reason"},{"name":"...","winery":"...","variety":"...","reasonKo":"...","reasonEn":"..."}],"buddyPick":${buddyList ? `{"name":"...","winery":"...","variety":"...","owner":"...","reasonKo":"...","reasonEn":"..."}` : "null"}}`;
 
   const response = await fetch(CHAT_URL, {
     method: "POST",

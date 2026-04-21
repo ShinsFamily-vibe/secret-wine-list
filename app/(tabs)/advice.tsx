@@ -111,12 +111,12 @@ export default function AdviceScreen() {
     let cancelled = false;
     setPicksLoading(true);
     setPicks(null);
-    getContextualPicks(winesForPicks.map((w) => tolikedWine(w)), buddyLiked, lang)
+    getContextualPicks(winesForPicks.map((w) => tolikedWine(w)), buddyLiked)
       .then((p) => { if (!cancelled) setPicks(p); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setPicksLoading(false); });
     return () => { cancelled = true; };
-  }, [myLiked, buddyLiked, lang]);
+  }, [myLiked, buddyLiked]);
 
   const handleAsk = async () => {
     if (!question.trim() || asking) return;
@@ -228,15 +228,16 @@ export default function AdviceScreen() {
 
                 {picks.myPicks.map((p, i) => {
                   const full = myLiked.find((w) => w.name === p.name || w.winery === p.winery) ?? p as unknown as Wine;
+                  const reason = lang === "ko" ? p.reasonKo : p.reasonEn;
                   return (
-                    <TouchableOpacity key={i} style={styles.pickCard} onPress={() => setDetailWine({ wine: full, reason: p.reason })}>
+                    <TouchableOpacity key={i} style={styles.pickCard} onPress={() => setDetailWine({ wine: full, reason })}>
                       <View style={styles.pickBadge}>
                         <Text style={styles.pickBadgeText}>나</Text>
                       </View>
                       <View style={styles.pickInfo}>
                         <Text style={styles.pickName} numberOfLines={1}>{p.name}{p.winery ? ` · ${p.winery}` : ""}</Text>
                         {p.variety ? <Text style={styles.pickSub} numberOfLines={1}>{p.variety}</Text> : null}
-                        <Text style={styles.pickReason}>{p.reason}</Text>
+                        <Text style={styles.pickReason}>{reason}</Text>
                       </View>
                       <View style={styles.pickRight}>
                         <Text style={styles.pickRating}>👍👍</Text>
@@ -249,8 +250,9 @@ export default function AdviceScreen() {
                 {picks.buddyPick && (() => {
                   const bp = picks.buddyPick!;
                   const full = buddyLiked.find((w) => w.name === bp.name || w.winery === bp.winery) ?? bp as unknown as LikedWine;
+                  const reason = lang === "ko" ? bp.reasonKo : bp.reasonEn;
                   return (
-                    <TouchableOpacity style={[styles.pickCard, styles.pickCardBuddy]} onPress={() => setDetailWine({ wine: full, reason: bp.reason, isBuddy: true })}>
+                    <TouchableOpacity style={[styles.pickCard, styles.pickCardBuddy]} onPress={() => setDetailWine({ wine: full, reason, isBuddy: true })}>
                       <View style={[styles.pickBadge, styles.pickBadgeBuddy]}>
                         <Text style={styles.pickBadgeText}>👥</Text>
                       </View>
@@ -258,7 +260,7 @@ export default function AdviceScreen() {
                         <Text style={styles.pickName} numberOfLines={1}>{bp.name}{bp.winery ? ` · ${bp.winery}` : ""}</Text>
                         {bp.variety ? <Text style={styles.pickSub}>{bp.variety}</Text> : null}
                         {bp.owner ? <Text style={styles.pickOwner}>{bp.owner}'s pick</Text> : null}
-                        <Text style={styles.pickReason}>{bp.reason}</Text>
+                        <Text style={styles.pickReason}>{reason}</Text>
                       </View>
                       <Ionicons name="chevron-forward" size={14} color="#555" />
                     </TouchableOpacity>
