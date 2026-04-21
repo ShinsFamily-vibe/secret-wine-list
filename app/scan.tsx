@@ -94,6 +94,29 @@ export default function ScanScreen() {
   };
 
   const handleTakePhoto = async () => {
+    if (Platform.OS === "web") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      (input as any).capture = "environment";
+      input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+      document.body.appendChild(input);
+      input.addEventListener("change", async (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        document.body.removeChild(input);
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const dataUrl = reader.result as string;
+          const resized = await resizeImageWeb(dataUrl, 1200);
+          await addPhoto(resized, resized.split(",")[1]);
+        };
+        reader.onerror = () => Alert.alert("Error", "Could not read image.");
+        reader.readAsDataURL(file);
+      });
+      input.click();
+      return;
+    }
     if (!permission?.granted) {
       const res = await requestPermission();
       if (!res.granted) return;
