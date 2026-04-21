@@ -30,14 +30,26 @@ import { addWineFS } from "../services/firestoreWines";
 function resizeImageWeb(dataUrl: string, maxPx: number): Promise<string> {
   return new Promise((resolve) => {
     const img = document.createElement("img") as HTMLImageElement;
+    const timer = setTimeout(() => resolve(dataUrl), 8000); // timeout fallback
     img.onload = () => {
-      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
-      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL("image/jpeg", 0.85));
+      clearTimeout(timer);
+      try {
+        const w = img.width || 800;
+        const h = img.height || 600;
+        const scale = Math.min(1, maxPx / Math.max(w, h));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(w * scale);
+        canvas.height = Math.round(h * scale);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(dataUrl); return; }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const out = canvas.toDataURL("image/jpeg", 0.82);
+        resolve(out.length > 200 ? out : dataUrl);
+      } catch {
+        resolve(dataUrl);
+      }
     };
+    img.onerror = () => { clearTimeout(timer); resolve(dataUrl); };
     img.src = dataUrl;
   });
 }
@@ -93,30 +105,36 @@ export default function ScanScreen() {
     }
   };
 
-  const handleTakePhoto = async () => {
-    if (Platform.OS === "web") {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = "image/*";
-      (input as any).capture = "environment";
-      input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
-      document.body.appendChild(input);
-      input.addEventListener("change", async (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
-        document.body.removeChild(input);
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = async () => {
+  const openWebFilePicker = (capture?: boolean) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    if (capture) input.setAttribute("capture", "environment");
+    input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+    document.body.appendChild(input);
+    input.addEventListener("change", async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      document.body.removeChild(input);
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
           const dataUrl = reader.result as string;
-          const resized = await resizeImageWeb(dataUrl, 1200);
-          await addPhoto(resized, resized.split(",")[1]);
-        };
-        reader.onerror = () => Alert.alert("Error", "Could not read image.");
-        reader.readAsDataURL(file);
-      });
-      input.click();
-      return;
-    }
+          const resized = await resizeImageWeb(dataUrl, 1100);
+          await addPhoto(resized, resized.split(",")[1] ?? "");
+        } catch (e) {
+          Alert.alert("Error", String(e));
+        }
+      };
+      reader.onerror = () => Alert.alert("Error", "Could not read image.");
+      reader.readAsDataURL(file);
+    });
+    // iOS Safari requires a small delay before click
+    setTimeout(() => input.click(), 50);
+  };
+
+  const handleTakePhoto = async () => {
+    if (Platform.OS === "web") { openWebFilePicker(true); return; }
     if (!permission?.granted) {
       const res = await requestPermission();
       if (!res.granted) return;
@@ -133,28 +151,7 @@ export default function ScanScreen() {
   };
 
   const handlePickLibrary = async () => {
-    if (Platform.OS === "web") {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = "image/*";
-      input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
-      document.body.appendChild(input);
-      input.addEventListener("change", async (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
-        document.body.removeChild(input);
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = async () => {
-          const dataUrl = reader.result as string;
-          const resized = await resizeImageWeb(dataUrl, 1200);
-          await addPhoto(resized, resized.split(",")[1]);
-        };
-        reader.onerror = () => Alert.alert("Error", "Could not read image.");
-        reader.readAsDataURL(file);
-      });
-      input.click();
-      return;
-    }
+    if (Platform.OS === "web") { openWebFilePicker(false); return; }
     const result = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.7 });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
