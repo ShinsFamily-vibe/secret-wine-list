@@ -99,27 +99,24 @@ export default function AdviceScreen() {
             .forEach((w) => allBuddyLiked.push(tolikedWine(w, buddy.displayName || buddy.email)));
         }
         setBuddyLiked(allBuddyLiked);
-
-        // Claude contextual picks
-        const topWines = liked.filter((w) => w.rating === "double_thumbs_up");
-        const winesForPicks = topWines.length >= 2 ? topWines : liked;
-        if (winesForPicks.length > 0) {
-          setPicksLoading(true);
-          try {
-            const p = await getContextualPicks(
-              winesForPicks.map((w) => tolikedWine(w)),
-              allBuddyLiked,
-              "ko"
-            );
-            setPicks(p);
-          } catch { /* silent */ } finally {
-            setPicksLoading(false);
-          }
-        }
       }
       setLoading(false);
     });
   }, []);
+
+  useEffect(() => {
+    const topWines = myLiked.filter((w) => w.rating === "double_thumbs_up");
+    const winesForPicks = topWines.length >= 2 ? topWines : myLiked;
+    if (winesForPicks.length === 0) return;
+    let cancelled = false;
+    setPicksLoading(true);
+    setPicks(null);
+    getContextualPicks(winesForPicks.map((w) => tolikedWine(w)), buddyLiked, lang)
+      .then((p) => { if (!cancelled) setPicks(p); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setPicksLoading(false); });
+    return () => { cancelled = true; };
+  }, [myLiked, buddyLiked, lang]);
 
   const handleAsk = async () => {
     if (!question.trim() || asking) return;
