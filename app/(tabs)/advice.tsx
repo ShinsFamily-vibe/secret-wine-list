@@ -10,7 +10,7 @@ import {
 import { auth } from "../../services/firebase";
 import { fetchWinesFS, fetchBuddyWinesFS } from "../../services/firestoreWines";
 import { fetchBuddies } from "../../services/firestoreBuddies";
-import { askWineAdvice, analyzeMenuForUser, LikedWine } from "../../services/claude";
+import { askWineAdvice, analyzeMenuForUser, getContextualPicks, ContextualPicks, LikedWine } from "../../services/claude";
 import { Wine } from "../../constants/types";
 
 function resizeImageForWeb(dataUrl: string, maxPx: number): Promise<string> {
@@ -71,6 +71,8 @@ export default function AdviceScreen() {
   const [answer, setAnswer] = useState("");
   const [asking, setAsking] = useState(false);
   const [menuAnalyzing, setMenuAnalyzing] = useState(false);
+  const [picks, setPicks] = useState<ContextualPicks | null>(null);
+  const [picksLoading, setPicksLoading] = useState(false);
   const [lang, setLang] = useState<"ko" | "en">("ko");
   const scrollRef = useRef<ScrollView>(null);
 
@@ -96,6 +98,23 @@ export default function AdviceScreen() {
             .forEach((w) => allBuddyLiked.push(tolikedWine(w, buddy.displayName || buddy.email)));
         }
         setBuddyLiked(allBuddyLiked);
+
+        // Claude contextual picks
+        const topWines = liked.filter((w) => w.rating === "double_thumbs_up");
+        const winesForPicks = topWines.length >= 2 ? topWines : liked;
+        if (winesForPicks.length > 0) {
+          setPicksLoading(true);
+          try {
+            const p = await getContextualPicks(
+              winesForPicks.map((w) => tolikedWine(w)),
+              allBuddyLiked,
+              "ko"
+            );
+            setPicks(p);
+          } catch { /* silent */ } finally {
+            setPicksLoading(false);
+          }
+        }
       }
       setLoading(false);
     });
@@ -177,8 +196,6 @@ export default function AdviceScreen() {
     );
   }
 
-  const top3 = myLiked.slice(0, 3);
-
   return (
     <LinearGradient colors={["#1a0a2e", "#2d1052", "#1a0a2e"]} style={styles.flex}>
       <SafeAreaView style={styles.flex}>
@@ -195,34 +212,56 @@ export default function AdviceScreen() {
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Top picks */}
-            {top3.length > 0 && (
+            {/* Contextual picks */}
+            {picksLoading && (
+              <View style={styles.picksLoadingRow}>
+                <ActivityIndicator size="small" color="#c8a97e" />
+                <Text style={styles.picksLoadingText}>
+                  {lang === "ko" ? "지금 이 순간 추천을 골라오는 중..." : "Finding the perfect wines for this moment..."}
+                </Text>
+              </View>
+            )}
+
+            {!picksLoading && picks && (picks.myPicks.length > 0 || picks.buddyPick) && (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>⭐ Your Top Picks</Text>
-                {top3.map((w) => (
-                  <View key={w.id} style={styles.pickCard}>
-                    <View style={styles.pickInfo}>
-                      <Text style={styles.pickName} numberOfLines={1}>
-                        {w.name || w.winery || "Unknown"}
-                      </Text>
-                      <Text style={styles.pickSub} numberOfLines={1}>
-                        {[w.winery, w.vintage, w.variety].filter(Boolean).join(" · ")}
-                      </Text>
-                      {w.region ? <Text style={styles.pickRegion} numberOfLines={1}>{w.region}</Text> : null}
+                <Text style={styles.sectionTitle}>
+                  🕐 {lang === "ko" ? "지금 이 순간을 위한 추천" : "Perfect for Right Now"}
+                </Text>
+
+                {picks.myPicks.map((p, i) => (
+                  <View key={i} style={styles.pickCard}>
+                    <View style={styles.pickBadge}>
+                      <Text style={styles.pickBadgeText}>나</Text>
                     </View>
-                    <Text style={styles.pickRating}>{ratingEmoji(w.rating)}</Text>
+                    <View style={styles.pickInfo}>
+                      <Text style={styles.pickName} numberOfLines={1}>{p.name}{p.winery ? ` · ${p.winery}` : ""}</Text>
+                      {p.variety ? <Text style={styles.pickSub} numberOfLines={1}>{p.variety}</Text> : null}
+                      <Text style={styles.pickReason}>{p.reason}</Text>
+                    </View>
+                    <Text style={styles.pickRating}>👍👍</Text>
                   </View>
                 ))}
-                {myLiked.length > 3 && (
-                  <Text style={styles.moreText}>+{myLiked.length - 3} more liked wines included in context</Text>
+
+                {picks.buddyPick && (
+                  <View style={[styles.pickCard, styles.pickCardBuddy]}>
+                    <View style={[styles.pickBadge, styles.pickBadgeBuddy]}>
+                      <Text style={styles.pickBadgeText}>👥</Text>
+                    </View>
+                    <View style={styles.pickInfo}>
+                      <Text style={styles.pickName} numberOfLines={1}>{picks.buddyPick.name}{picks.buddyPick.winery ? ` · ${picks.buddyPick.winery}` : ""}</Text>
+                      {picks.buddyPick.variety ? <Text style={styles.pickSub}>{picks.buddyPick.variety}</Text> : null}
+                      {picks.buddyPick.owner ? <Text style={styles.pickOwner}>{picks.buddyPick.owner}'s pick</Text> : null}
+                      <Text style={styles.pickReason}>{picks.buddyPick.reason}</Text>
+                    </View>
+                  </View>
                 )}
               </View>
             )}
 
-            {top3.length === 0 && (
+            {!picksLoading && myLiked.length === 0 && (
               <View style={styles.noPicksBox}>
                 <Text style={styles.noPicksText}>
-                  👍 Rate wines in your list to get personalized recommendations!
+                  👍 {lang === "ko" ? "와인에 좋아요를 눌러 맞춤 추천을 받아보세요!" : "Rate wines to get personalized recommendations!"}
                 </Text>
               </View>
             )}
@@ -315,18 +354,28 @@ const styles = StyleSheet.create({
   section: { gap: 12 },
   sectionTitle: { color: "#c8a97e", fontSize: 15, fontWeight: "700" },
 
+  picksLoadingRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  picksLoadingText: { color: "#c8a97e", fontSize: 13 },
   pickCard: {
-    flexDirection: "row", alignItems: "center",
+    flexDirection: "row", alignItems: "flex-start",
     backgroundColor: "rgba(255,255,255,0.07)",
     borderRadius: 12, padding: 14, gap: 12,
     borderWidth: 1, borderColor: "rgba(200,169,126,0.15)",
   },
+  pickCardBuddy: { borderColor: "rgba(100,180,255,0.25)", backgroundColor: "rgba(100,180,255,0.05)" },
+  pickBadge: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: "#c8a97e", justifyContent: "center", alignItems: "center",
+    marginTop: 2,
+  },
+  pickBadgeBuddy: { backgroundColor: "rgba(100,180,255,0.4)" },
+  pickBadgeText: { color: "#1a0a2e", fontSize: 11, fontWeight: "700" },
   pickInfo: { flex: 1 },
-  pickName: { color: "#fff", fontSize: 15, fontWeight: "600" },
+  pickName: { color: "#fff", fontSize: 14, fontWeight: "600" },
   pickSub: { color: "#aaa", fontSize: 12, marginTop: 2 },
-  pickRegion: { color: "#777", fontSize: 11, marginTop: 1 },
-  pickRating: { fontSize: 22 },
-  moreText: { color: "#666", fontSize: 12, textAlign: "center" },
+  pickOwner: { color: "rgba(100,180,255,0.8)", fontSize: 11, marginTop: 1 },
+  pickReason: { color: "#c8a97e", fontSize: 12, marginTop: 4, lineHeight: 17 },
+  pickRating: { fontSize: 18 },
 
   noPicksBox: {
     backgroundColor: "rgba(200,169,126,0.08)",

@@ -209,3 +209,81 @@ export async function analyzeMenuForUser(
   const data = await response.json();
   return data.content[0].text.trim();
 }
+
+export interface ContextualPick {
+  name: string;
+  winery: string;
+  variety?: string;
+  owner?: string;
+  reason: string;
+}
+
+export interface ContextualPicks {
+  myPicks: ContextualPick[];
+  buddyPick: ContextualPick | null;
+}
+
+export async function getContextualPicks(
+  myTopWines: LikedWine[],
+  buddyWines: LikedWine[],
+  lang: "ko" | "en"
+): Promise<ContextualPicks> {
+  if (!IS_WEB && !CLAUDE_API_KEY) throw new Error("Claude API key not set.");
+  if (myTopWines.length === 0) return { myPicks: [], buddyPick: null };
+
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (!IS_WEB) {
+    headers["x-api-key"] = CLAUDE_API_KEY;
+    headers["anthropic-version"] = "2023-06-01";
+  }
+
+  const now = new Date();
+  const hour = now.getHours();
+  const month = now.getMonth() + 1;
+  const timeOfDay = hour < 6 ? "late night" : hour < 12 ? "morning" : hour < 17 ? "afternoon" : hour < 21 ? "evening" : "night";
+  const season = month >= 3 && month <= 5 ? "spring" : month >= 6 && month <= 8 ? "summer" : month >= 9 && month <= 11 ? "autumn" : "winter";
+
+  const fmt = (w: LikedWine) =>
+    `${w.name || "?"}${w.winery ? ` by ${w.winery}` : ""}${w.variety ? `, ${w.variety}` : ""}${w.region ? `, ${w.region}` : ""}`;
+
+  const myList = myTopWines.map((w, i) => `${i + 1}. ${fmt(w)}`).join("\n");
+  const buddyList = buddyWines.length > 0
+    ? buddyWines.map((w, i) => `${i + 1}. ${fmt(w)} [by ${w.owner || "buddy"}]`).join("\n")
+    : "";
+
+  const reasonLang = lang === "ko" ? "Korean" : "English";
+  const prompt = `Current context: ${timeOfDay}, ${season}, month ${month}.
+
+From MY double-thumbs-up wines, pick exactly 2 that best suit this moment:
+${myList}
+
+${buddyList ? `From BUDDIES' liked wines, pick exactly 1 that best suits this moment:\n${buddyList}` : "No buddy wines."}
+
+Respond ONLY with valid JSON (no markdown):
+{"myPicks":[{"name":"...","winery":"...","variety":"...","reason":"one line in ${reasonLang}"},{"name":"...","winery":"...","variety":"...","reason":"..."}],"buddyPick":${buddyList ? `{"name":"...","winery":"...","variety":"...","owner":"...","reason":"..."}` : "null"}}`;
+
+  const response = await fetch(CHAT_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 600,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Claude API error ${response.status}: ${err}`);
+  }
+
+  const data2 = await response.json();
+  const text = data2.content[0].text.trim();
+  try {
+    return JSON.parse(text) as ContextualPicks;
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]) as ContextualPicks;
+    return { myPicks: [], buddyPick: null };
+  }
+}
