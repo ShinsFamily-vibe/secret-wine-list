@@ -24,12 +24,11 @@ export interface WineInfo {
 }
 
 export async function analyzeWineLabel(base64Image: string): Promise<WineInfo> {
-  if (!CLAUDE_API_KEY) throw new Error("Claude API key not set. Check .env.local");
+  if (!IS_WEB && !CLAUDE_API_KEY) throw new Error("Claude API key not set. Check .env.local");
   if (!base64Image) throw new Error("No image data provided");
 
-  const isWeb = Platform.OS === "web";
   const headers: Record<string, string> = { "content-type": "application/json" };
-  if (!isWeb) {
+  if (!IS_WEB) {
     headers["x-api-key"] = CLAUDE_API_KEY;
     headers["anthropic-version"] = "2023-06-01";
   }
@@ -108,11 +107,10 @@ export async function askWineAdvice(
   buddyWines: LikedWine[],
   question: string
 ): Promise<string> {
-  if (!CLAUDE_API_KEY) throw new Error("Claude API key not set.");
+  if (!IS_WEB && !CLAUDE_API_KEY) throw new Error("Claude API key not set.");
 
-  const isWeb = Platform.OS === "web";
   const headers: Record<string, string> = { "content-type": "application/json" };
-  if (!isWeb) {
+  if (!IS_WEB) {
     headers["x-api-key"] = CLAUDE_API_KEY;
     headers["anthropic-version"] = "2023-06-01";
   }
