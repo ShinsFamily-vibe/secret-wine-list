@@ -1,18 +1,28 @@
 import { Platform } from "react-native";
-import { CLAUDE_API_KEY } from "./config";
+import { API_BASE_URL } from "./config";
+import { auth } from "./firebase";
 
 const IS_WEB = Platform.OS === "web";
 const IS_DEV = typeof __DEV__ !== "undefined" ? __DEV__ : false;
 
-const ANALYZE_URL = IS_WEB
-  ? (IS_DEV ? "http://localhost:3001/analyze" : "/api/analyze")
-  : "https://api.anthropic.com/v1/messages";
+// Web: same-origin Vercel API (or local proxy.js in dev).
+// Native: the deployed Vercel API (EXPO_PUBLIC_API_BASE_URL). The Claude key never ships in the app.
+function endpoint(kind: "analyze" | "chat"): string {
+  if (IS_WEB) return IS_DEV ? `http://localhost:3001/${kind}` : `/api/${kind}`;
+  if (!API_BASE_URL) throw new Error("EXPO_PUBLIC_API_BASE_URL is not set.");
+  return `${API_BASE_URL}/api/${kind}`;
+}
 
-const CHAT_URL = IS_WEB
-  ? (IS_DEV ? "http://localhost:3001/chat" : "/api/chat")
-  : "https://api.anthropic.com/v1/messages";
-
-const API_URL = ANALYZE_URL;
+async function postClaude(kind: "analyze" | "chat", body: object): Promise<Response> {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Please sign in first.");
+  const idToken = await user.getIdToken();
+  return fetch(endpoint(kind), {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${idToken}` },
+    body: JSON.stringify(body),
+  });
+}
 
 export interface WineInfo {
   name: string;
@@ -24,36 +34,26 @@ export interface WineInfo {
 }
 
 export async function analyzeWineLabel(base64Image: string): Promise<WineInfo> {
-  if (!IS_WEB && !CLAUDE_API_KEY) throw new Error("Claude API key not set. Check .env.local");
   if (!base64Image) throw new Error("No image data provided");
 
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (!IS_WEB) {
-    headers["x-api-key"] = CLAUDE_API_KEY;
-    headers["anthropic-version"] = "2023-06-01";
-  }
-
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: "image/jpeg",
-                data: base64Image,
-              },
+  const response = await postClaude("analyze", {
+    model: "claude-sonnet-4-6",
+    max_tokens: 1024,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: "image/jpeg",
+              data: base64Image,
             },
-            {
-              type: "text",
-              text: `Look at this wine label image. Extract all wine information visible on the label, then use your wine knowledge to fill in any missing fields.
+          },
+          {
+            type: "text",
+            text: `Look at this wine label image. Extract all wine information visible on the label, then use your wine knowledge to fill in any missing fields.
 
 Return ONLY a valid JSON object with these exact keys: name, winery, vintage, region, variety.
 - name: full wine name (e.g. "Opus One", "Chateau Margaux")
@@ -66,11 +66,10 @@ Return ONLY a valid JSON object with these exact keys: name, winery, vintage, re
 If a field is not on the label but you can infer it from the wine name/winery, use your knowledge to fill it in. Do not include any explanation or markdown.
 
 Example: {"name":"Opus One","winery":"Opus One Winery","vintage":"2019","region":"Napa Valley, California, USA","variety":"Cabernet Sauvignon blend","estimatedPrice":"$280-320"}`,
-            },
-          ],
-        },
-      ],
-    }),
+          },
+        ],
+      },
+    ],
   });
 
   if (!response.ok) {
@@ -107,13 +106,6 @@ export async function askWineAdvice(
   buddyWines: LikedWine[],
   question: string
 ): Promise<string> {
-  if (!IS_WEB && !CLAUDE_API_KEY) throw new Error("Claude API key not set.");
-
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (!IS_WEB) {
-    headers["x-api-key"] = CLAUDE_API_KEY;
-    headers["anthropic-version"] = "2023-06-01";
-  }
 
   const formatWine = (w: LikedWine) =>
     `- ${w.name || "Unknown"}${w.winery ? ` by ${w.winery}` : ""}${w.vintage ? ` (${w.vintage})` : ""}${w.region ? `, ${w.region}` : ""}${w.variety ? `, ${w.variety}` : ""}${w.rating === "double_thumbs_up" ? " ⭐⭐" : " ⭐"}${w.price ? ` ~${w.price}` : w.estimatedPrice ? ` ~${w.estimatedPrice}` : ""}`;
@@ -136,15 +128,11 @@ Please:
 2. Then suggest 3–5 new wines I haven't tried that match my taste profile and request.
 For each suggestion include: wine name, producer, approximate price range, and a one-sentence reason why I'd like it.`;
 
-  const response = await fetch(CHAT_URL, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1500,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userPrompt }],
-    }),
+  const response = await postClaude("chat", {
+    model: "claude-sonnet-4-6",
+    max_tokens: 1500,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }],
   });
 
   if (!response.ok) {
@@ -162,13 +150,6 @@ export async function analyzeMenuForUser(
   buddyWines: LikedWine[],
   lang: "ko" | "en"
 ): Promise<string> {
-  if (!IS_WEB && !CLAUDE_API_KEY) throw new Error("Claude API key not set.");
-
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (!IS_WEB) {
-    headers["x-api-key"] = CLAUDE_API_KEY;
-    headers["anthropic-version"] = "2023-06-01";
-  }
 
   const formatWine = (w: LikedWine) =>
     `- ${w.name || "?"}${w.winery ? ` by ${w.winery}` : ""}${w.variety ? `, ${w.variety}` : ""}${w.region ? `, ${w.region}` : ""}${w.rating === "double_thumbs_up" ? " ⭐⭐" : " ⭐"}`;
@@ -180,26 +161,22 @@ export async function analyzeMenuForUser(
     ? `이 와인 메뉴판 사진을 분석해주세요. 메뉴에서 모든 와인을 추출한 뒤, 아래 사용자의 취향을 바탕으로 가장 잘 맞는 와인 2~3개를 추천해주세요. 메뉴에 없는 와인은 추천하지 마세요. 각 추천에는 와인 이름, 가격(메뉴에 있으면), 추천 이유를 포함해주세요.`
     : `Analyze this wine menu photo. Extract all wines listed, then recommend 2-3 wines from this menu that best match the user's taste profile below. Only recommend wines actually on this menu. Include the wine name, price (if shown), and reason for each recommendation.`;
 
-  const response = await fetch(ANALYZE_URL, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1500,
-      messages: [{
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: { type: "base64", media_type: "image/jpeg", data: base64Image },
-          },
-          {
-            type: "text",
-            text: `${instructions}\n\nMy liked wines (⭐=thumbs up, ⭐⭐=double thumbs up):\n${myList}\n\nBuddies' liked wines:\n${buddyList}`,
-          },
-        ],
-      }],
-    }),
+  const response = await postClaude("analyze", {
+    model: "claude-sonnet-4-6",
+    max_tokens: 1500,
+    messages: [{
+      role: "user",
+      content: [
+        {
+          type: "image",
+          source: { type: "base64", media_type: "image/jpeg", data: base64Image },
+        },
+        {
+          type: "text",
+          text: `${instructions}\n\nMy liked wines (⭐=thumbs up, ⭐⭐=double thumbs up):\n${myList}\n\nBuddies' liked wines:\n${buddyList}`,
+        },
+      ],
+    }],
   });
 
   if (!response.ok) {
@@ -228,14 +205,7 @@ export async function getContextualPicks(
   myTopWines: LikedWine[],
   buddyWines: LikedWine[]
 ): Promise<ContextualPicks> {
-  if (!IS_WEB && !CLAUDE_API_KEY) throw new Error("Claude API key not set.");
   if (myTopWines.length === 0) return { myPicks: [], buddyPick: null };
-
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (!IS_WEB) {
-    headers["x-api-key"] = CLAUDE_API_KEY;
-    headers["anthropic-version"] = "2023-06-01";
-  }
 
   const now = new Date();
   const hour = now.getHours();
@@ -261,14 +231,10 @@ ${buddyList ? `From BUDDIES' liked wines, pick exactly 1 that best suits this mo
 Respond ONLY with valid JSON (no markdown). Each pick needs both reasonKo (Korean) and reasonEn (English), one line each:
 {"myPicks":[{"name":"...","winery":"...","variety":"...","reasonKo":"한국어 이유","reasonEn":"English reason"},{"name":"...","winery":"...","variety":"...","reasonKo":"...","reasonEn":"..."}],"buddyPick":${buddyList ? `{"name":"...","winery":"...","variety":"...","owner":"...","reasonKo":"...","reasonEn":"..."}` : "null"}}`;
 
-  const response = await fetch(CHAT_URL, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 600,
-      messages: [{ role: "user", content: prompt }],
-    }),
+  const response = await postClaude("chat", {
+    model: "claude-sonnet-4-6",
+    max_tokens: 600,
+    messages: [{ role: "user", content: prompt }],
   });
 
   if (!response.ok) {

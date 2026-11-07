@@ -48,6 +48,6 @@
     "experiments": {
       "typedRoutes": true
     },
-    "scheme": "winelist"
+    "scheme": ["winelist", "com.winelist.app"]
   }
 }

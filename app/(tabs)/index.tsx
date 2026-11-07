@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, User } from "firebase/auth";
+import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -10,6 +10,7 @@ import {
 import WineCard from "../../components/WineCard";
 import { Lang, tr } from "../../constants/i18n";
 import { Wine } from "../../constants/types";
+import { useGoogleSignIn } from "../../services/auth";
 import { auth } from "../../services/firebase";
 import { deleteWineFS, fetchWinesFS } from "../../services/firestoreWines";
 import { saveUserProfile } from "../../services/firestoreBuddies";
@@ -41,12 +42,14 @@ export default function MyListScreen() {
     }
   };
 
+  const showSignInError = (e: unknown) => Alert.alert("Sign in failed", String(e));
+  const { signIn } = useGoogleSignIn(showSignInError);
+
   const handleSignIn = async () => {
     try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      await signIn();
     } catch (e) {
-      Alert.alert("Sign in failed", String(e));
+      showSignInError(e);
     }
   };
 

@@ -1,6 +1,6 @@
-// Replace with your actual API key
-// For production, use environment variables via EAS secrets
-export const CLAUDE_API_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ?? "";
+// Claude API key lives ONLY on the server (Vercel env: ANTHROPIC_API_KEY).
+// Native apps call the deployed Vercel API at this base URL.
+export const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL ?? "").replace(/\/$/, "");
 
 // Google OAuth Client IDs (create at console.cloud.google.com)
 export const GOOGLE_CLIENT_ID_IOS = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS ?? "";

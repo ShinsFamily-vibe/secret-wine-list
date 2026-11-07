@@ -4,12 +4,12 @@ const fs = require("fs");
 const path = require("path");
 
 // Load .env.local manually
-let ANTHROPIC_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || "";
+let ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
 try {
   const envFile = fs.readFileSync(path.join(__dirname, ".env.local"), "utf8");
   for (const line of envFile.split("\n")) {
     const [k, v] = line.split("=");
-    if (k?.trim() === "EXPO_PUBLIC_ANTHROPIC_API_KEY") {
+    if (k?.trim() === "ANTHROPIC_API_KEY") {
       ANTHROPIC_KEY = v?.trim() ?? "";
       break;
     }
@@ -20,7 +20,7 @@ const PORT = 3001;
 
 const server = http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
 
   if (req.method === "OPTIONS") {
