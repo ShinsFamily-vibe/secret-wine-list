@@ -17,7 +17,8 @@
       "bundleIdentifier": "com.winelist.app",
       "infoPlist": {
         "NSCameraUsageDescription": "We use your camera to scan wine labels.",
-        "NSPhotoLibraryUsageDescription": "We access your photos to scan wine labels."
+        "NSPhotoLibraryUsageDescription": "We access your photos to scan wine labels.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -26,7 +27,10 @@
         "backgroundColor": "#1a0a2e"
       },
       "package": "com.winelist.app",
-      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE"]
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -38,16 +42,30 @@
       "expo-web-browser",
       [
         "expo-camera",
-        { "cameraPermission": "Allow Wine List to access your camera to scan wine labels." }
+        {
+          "cameraPermission": "Allow Wine List to access your camera to scan wine labels."
+        }
       ],
       [
         "expo-image-picker",
-        { "photosPermission": "Allow Wine List to access your photos to scan wine labels." }
+        {
+          "photosPermission": "Allow Wine List to access your photos to scan wine labels."
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true
     },
-    "scheme": ["winelist", "com.winelist.app"]
+    "scheme": [
+      "winelist",
+      "com.winelist.app"
+    ],
+    "owner": "shins-family-vibe-team",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d767ee76-f0a4-49e6-ab0d-3ae3c2454420"
+      }
+    }
   }
 }
